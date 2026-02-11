@@ -1,8 +1,8 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends,HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from schema.user_input import UserInput
+from schema.user_input import UserInput,UpdateFieldRequest
 from schema.prediction_response import PredictionResponse
 from model.predict import predict_output, model, MODEL_VERSION
 
@@ -74,3 +74,59 @@ def predict_premium(
 
     except Exception as e:
         return JSONResponse(status_code=500, content=str(e))
+    
+@app.get("/predictions")
+def get_all_predictions(db: Session = Depends(get_db)):
+    records = db.query(Prediction).order_by(Prediction.created_at.desc()).all()
+    return records
+
+@app.get("/predictions/{prediction_id}")
+def get_prediction(prediction_id: int, db: Session = Depends(get_db)):
+    record = db.query(Prediction).filter(Prediction.id == prediction_id).first()
+
+    if not record:
+        return JSONResponse(status_code=404, content="Prediction not found")
+
+    return record
+
+from schema.prediction_update import PredictionUpdate
+
+@app.put("/prediction/{id}")
+def update_prediction(
+    id: int,
+    update: UpdateFieldRequest,
+    db: Session = Depends(get_db)
+):
+    record = db.query(Prediction).filter(Prediction.id == id).first()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    # check field exists in model
+    if not hasattr(record, update.field_name):
+        raise HTTPException(status_code=400, detail="Invalid field name")
+
+    # dynamic update
+    setattr(record, update.field_name, update.new_value)
+
+    db.commit()
+    db.refresh(record)
+
+    return {
+        "message": "Field updated successfully",
+        "updated_field": update.field_name,
+        "new_value": update.new_value
+    }
+
+@app.delete("/predictions/{prediction_id}")
+def delete_prediction(prediction_id: int, db: Session = Depends(get_db)):
+    record = db.query(Prediction).filter(Prediction.id == prediction_id).first()
+
+    if not record:
+        return JSONResponse(status_code=404, content="Prediction not found")
+
+    db.delete(record)
+    db.commit()
+
+    return {"message": "Prediction deleted successfully"}
+

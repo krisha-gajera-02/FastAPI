@@ -56,3 +56,7 @@ class UserInput(BaseModel):
             return 2
         else:
             return 3
+
+class UpdateFieldRequest(BaseModel):
+    field_name: str
+    new_value: str
